@@ -38,10 +38,15 @@ import com.google.api.services.calendar.model.CalendarListEntry;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.EventDateTime;
 import com.google.api.services.calendar.model.Events;
+import com.google.gson.Gson;
 
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
 import java.util.TimeZone;
@@ -149,13 +154,11 @@ public class GoogleCalendarAPI {
 		return result;
 	}
 
-	private static Calendar updateCalendar(Calendar calendar)
-			throws IOException {
+	private static Calendar updateCalendar(Calendar calendar) throws IOException {
 		View.header("Update Calendar");
 		Calendar entry = new Calendar();
 		entry.setSummary("Updated Calendar for Testing");
-		Calendar result = client.calendars().patch(calendar.getId(), entry)
-				.execute();
+		Calendar result = client.calendars().patch(calendar.getId(), entry).execute();
 		View.display(result);
 		return result;
 	}
@@ -163,20 +166,64 @@ public class GoogleCalendarAPI {
 	private static void addEvent(Calendar calendar) throws IOException {
 		View.header("Add Event");
 		Event event = newEvent();
-		Event result = client.events().insert(calendar.getId(), event)
-				.execute();
+		Event result = client.events().insert(calendar.getId(), event).execute();
 		View.display(result);
 	}
 
+	/**
+	 * Set all-day-event
+	 * @param event
+	 * @return
+	 */
+	private static Event setAllDayEvent(Event event, String dateStr) {
+	    Date startDate = new Date(); // Or a date from the database
+	    DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+	    if (dateStr.isEmpty()) {
+		    try {
+		    	startDate = dateFormat.parse(dateStr);
+			} catch (ParseException e) {
+				e.printStackTrace();
+			}
+	    }
+	    Date endDate = new Date(startDate.getTime() + 86400000); // An all-day event is 1 day (or 86400000 ms) long
+
+	    String startDateStr = dateFormat.format(startDate);
+	    String endDateStr = dateFormat.format(endDate);
+	    // Out of the 6 methods for creating a DateTime object with no time element, only the String version works
+	    DateTime startDateTime = new DateTime(startDateStr);
+	    DateTime endDateTime = new DateTime(endDateStr);
+
+	    // Must use the setDate() method for an all-day event (setDateTime() is used for timed events)
+	    EventDateTime startEventDateTime = new EventDateTime().setDate(startDateTime);
+	    EventDateTime endEventDateTime = new EventDateTime().setDate(endDateTime);
+
+	    event.setStart(startEventDateTime);
+	    event.setEnd(endEventDateTime);
+	    
+	    return event;
+	}
+	
 	private static Event newEvent() {
 		Event event = new Event();
-		event.setSummary("New Event");
-		Date startDate = new Date();
-		Date endDate = new Date(startDate.getTime() + 3600000);
-		DateTime start = new DateTime(startDate, TimeZone.getTimeZone("UTC"));
-		event.setStart(new EventDateTime().setDateTime(start));
-		DateTime end = new DateTime(endDate, TimeZone.getTimeZone("UTC"));
-		event.setEnd(new EventDateTime().setDateTime(end));
+		// Set event summary
+		event.setSummary("Test Event");
+		
+		// Set all-day-event
+		String dateStr = "";
+		event = setAllDayEvent(event, dateStr);
+		
+		// Set start and end time of event
+//		Date startDate = new Date();
+//		Date endDate = new Date(startDate.getTime() + 3600000);
+//		DateTime start = new DateTime(startDate, TimeZone.getTimeZone("UTC"));
+//		// Set event start time
+//		event.setStart(new EventDateTime().setDateTime(start));
+//		DateTime end = new DateTime(endDate, TimeZone.getTimeZone("UTC"));
+//		// Set event end time
+//		event.setEnd(new EventDateTime().setDateTime(end));
+		
+		event.setDescription("Test description");
+		event.setLocation("Taipei");
 		return event;
 	}
 
@@ -216,6 +263,45 @@ public class GoogleCalendarAPI {
 		client.calendars().delete(calendar.getId()).execute();
 	}
 
+	public static ConfigInfo getConfig() {
+		String JSON = readConfig();
+		Gson gson = new Gson();
+		ConfigInfo ci = gson.fromJson(JSON, ConfigInfo.class);
+		
+		return ci;
+	}
+	
+	private static String readConfig() {
+		StringBuilder sb = new StringBuilder();
+		String filePath = "config.txt";
+		BufferedReader reader = null;
+
+		try {
+			reader = new BufferedReader(new InputStreamReader(
+					new FileInputStream(filePath), "UTF-8")); // read document format in "UTF-8"
+			String str = null;
+			while ((str = reader.readLine()) != null) {
+				sb.append(str);
+			}
+		} catch (Exception e) {
+			System.err.println("Please create your config.txt with your gmail address in JSON format:");
+			System.err.println("{\"account\": \"your gmail address\"}");
+//			e.printStackTrace();
+		} finally {
+			try {
+				reader.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		}
+		return sb.toString();
+	}
+
+	class ConfigInfo {
+		public String account = "";
+	}
+	
 	public static void main(String[] args) {
 		try {
 			// initialize the transport
@@ -232,19 +318,20 @@ public class GoogleCalendarAPI {
 					httpTransport, JSON_FACTORY, credential)
 					.setApplicationName(APPLICATION_NAME).build();
 
+			ConfigInfo configInfo = getConfig();
 			com.google.api.services.calendar.model.Calendar calendar = client
-					.calendars().get("primary").execute();
+					.calendars().get(configInfo.account).execute();
 
-			// run commands
-			// showCalendars();
-			// updateCalendar(calendar);
-			// addEvent(calendar);
+			//run commands
+//			showCalendars();
+//			updateCalendar(calendar);
+//			addEvent(calendar);
 			showEvents(calendar);
 
-			// addCalendarsUsingBatch();
-			// deleteCalendarsUsingBatch();
-			// Calendar calendar = addCalendar();
-			// deleteCalendar(calendar);
+//			addCalendarsUsingBatch();
+//			deleteCalendarsUsingBatch();
+//			Calendar calendar = addCalendar();
+//			deleteCalendar(calendar);
 
 		} catch (IOException e) {
 			System.err.println(e.getMessage());
